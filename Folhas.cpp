@@ -227,6 +227,52 @@ void Bordas(const char* Imagem1, const char* Imagem2){
 
 }
 
+vector<int> BordasPorFolha(vector<int>& rotulos, vector<int>& areas, int largura, int altura, vector<int>& bordas) {
+
+    vector<int> quantidadeBordas(areas.size(), 0);
+
+    // Vizinhos em cruz: cima, baixo, esquerda e direita.
+    int dx[4] = {0, 0, -1, 1};
+    int dy[4] = {-1, 1, 0, 0};
+
+    for(int y = 0; y < altura; ++y) {
+        for(int x = 0; x < largura; ++x) {
+
+            int rotulo = rotulos[y * largura + x];
+
+            if(rotulo > 0 && rotulo < (int)areas.size() && areas[rotulo] > 1000) {
+                bool borda = false;
+
+                for(int i = 0; i < 4; ++i) {
+                    int nx = x + dx[i];
+                    int ny = y + dy[i];
+
+                    if(nx < 0 || nx >= largura || ny < 0 || ny >= altura) {
+                        borda = true;
+                    } else if(rotulos[ny * largura + nx] != rotulo) {
+                        borda = true;
+                    }
+                }
+
+                if(borda) {
+                    bordas[y * largura + x] = rotulo;
+                    quantidadeBordas[rotulo]++;
+                }
+            }
+        }
+    }
+
+    for(int i = 1; i < (int)areas.size(); ++i) {
+        if(areas[i] > 1000) {
+            cout << "Folha " << i << ": " << quantidadeBordas[i]
+                 << " pixels de borda" << endl;
+        }
+    }
+
+    return bordas;
+
+}
+
 void DesenhaOriginal(const char* Imagem1, const char* Imagem2) {
     BMP* folha1 = BMP_ReadFile(Imagem1);
     BMP* folha2 = BMP_ReadFile(Imagem2);
@@ -246,62 +292,54 @@ void DesenhaOriginal(const char* Imagem1, const char* Imagem2) {
 
 }
 
-void SegueFronteira(const char* Imagem1) {
-    BMP* folha1 = BMP_ReadFile(Imagem1);
-    int  largura, altura, profundidade;
-    altura = BMP_GetHeight(folha1);
-    largura = BMP_GetWidth(folha1);
+int SegueFronteira(vector<int>& bordas, vector<int>& rotulos, int largura, int altura) {
 
-    bool Find = false;
-    int b0[] = {0, 0};
-    int c0[] = {0, 0};
-    
-    for (int y = 0; y < altura; ++y) {
-        for (int x = 0; x < largura; ++x) {
-
-            unsigned char r, g, b;
-            BMP_GetPixelRGB(folha1, x, y, &r, &g, &b);
-
-            if(r == 255 && g == 0 && b == 0) { // Pixel Vermelho
-                b0[0] = x;
-                b0[1] = y;
-                c0[0] = x-1;
-                c0[1] = y;
-                Find = true;
-                break;
-            } else {
-                continue;
+    bool achou = false;
+    for(int i = 0; i < altura; i++){
+        for(int j = 0; j < largura; j++){
+         //percorrer a imagem e verificar se o pixel é uma borda
+            if(bordas[j * largura + i] == rotulos[j * largura + i] && rotulos[j * largura + i] != 0){
+                //se for uma borda, verificar os 8 vizinhos
+                bordas[j * largura + i] = rotulos[j * largura + i];
+                achou = true;
+                
             }
-            if (Find == true) {
-                break;
+        }
+    }
+    if(!achou){
+        cout << "Nao foi possivel encontrar a fronteira!" << endl;
+        return 0;
+    }
+
+    //8 vizinhos
+    int dx[8] = {-1, -1, -1, 0, 0, 1, 1, 1};
+    int dy[8] = {-1, 0, 1, -1, 1, -1, 0, 1};
+
+    for(int i = 0; i < altura; i++){
+        for(int j = 0; j < largura; j++){
+            if(bordas[j * largura + i] == rotulos[j * largura + i] && rotulos[j * largura + i] != 0){
+                //verificar os 8 vizinhos
+                
             }
         }
     }
 
-    int dx[8] = { 0,  1,  1,  1,  0, -1, -1, -1};
-    int dy[8] = {-1, -1,  0,  1,  1,  1,  0, -1};
+    return 1;
 
-    for (int i = 0; i < 8; ++i) {
-        int newX = c0[0] + dx[i];
-        int newY = c0[1] + dy[i];
-
-        
-    }
-    //Não consegui implementar a função de seguir a fronteira, mas consegui encontrar o ponto inicial da fronteira. 
 }
 
-void rotula_folhas(){
+int rotula_folhas(vector<int>& rotulos, vector<int>& areas, int& largura, int& altura){
     //Avaliar a imagem binaria em preto e branco
     //cada pixel branco da primeira folha vira 1, da segunda vira 2
     //pixels pretos permanecem 0
 
     BMP* folhaBW = BMP_ReadFile("BlackWhite/FolhasBW.bmp");   // abre a imagem
-    int largura = BMP_GetWidth(folhaBW);                       // quantas colunas
-    int altura  = BMP_GetHeight(folhaBW);                      // quantas linhas
+    largura = BMP_GetWidth(folhaBW);                       // quantas colunas
+    altura  = BMP_GetHeight(folhaBW);                      // quantas linhas
     int folhas = 0;                                                  // contador de folhas
 
     unsigned char r, g, b;
-    vector<int> rotulos(largura * altura, 0);
+    rotulos.assign(largura * altura, 0);
     int contador = 0;
     stack<pair<int, int>> pilha;
 
@@ -344,7 +382,7 @@ void rotula_folhas(){
     }
 
     //medir cada rotulo 
-    vector<int> areas(contador + 1, 0);
+    areas.assign(contador + 1, 0);
     for(int i = 0; i < rotulos.size(); ++i) {
         if(rotulos[i] > 0)
             areas[rotulos[i]]++;
@@ -363,17 +401,40 @@ void rotula_folhas(){
             folhas++;
     }
 
-    cout << "Numero de folhas: " << folhas << endl;
-    BMP_Free(folhaBW);
+    return folhas;
+}
+
+void seguidor_fronteira(vector<int>& bordas, vector<int>& rotulos, int largura, int altura) {
+    // Implementação do algoritmo de seguimento de fronteira
+    // Este é um esboço e precisa ser completado com a lógica correta
+    for(int y = 0; y < altura; ++y) {
+        for(int x = 0; x < largura; ++x) {
+            int rotulo = rotulos[y * largura + x];
+            if(rotulo > 0 && bordas[y * largura + x] == 0) {
+                // Encontrar o ponto inicial da fronteira
+                // Seguir a fronteira usando os vizinhos
+                // Marcar os pixels da fronteira na imagem de bordas
+            }
+        }
+    }
 }
 
 int main() {
     LoadImage("Folhas/Folhas6.bmp");
-    rotula_folhas();
+
+    vector<int> rotulos;
+    vector<int> areas;
+    vector<int> bordas;
+    int largura = 0, altura = 0;
+    int folhas = rotula_folhas(rotulos, areas, largura, altura);
+    cout << "Numero de folhas: " << folhas << endl;
+    BordasPorFolha(rotulos, areas, largura, altura, bordas);
     Dilatacao("BlackWhite/FolhasBW.bmp");
     Erosao("BlackWhite/FolhasBW.bmp");
     Bordas("BlackWhite/FolhasBW.bmp", "Erosao/FolhasErosao.bmp");
+
     //Bordas("../Dilatacao/FolhasDilatadas.bmp", "../Erosao/FolhasErosao.bmp");
+
     cout << "Processamento concluído!" << endl;
 
     return 0;
