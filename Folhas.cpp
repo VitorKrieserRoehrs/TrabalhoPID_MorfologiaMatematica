@@ -5,18 +5,18 @@
 #include <vector>
 #include <stack>
 #include "Include/qdbmp.h"
-
+#include <algorithm>
 
 using namespace std;
 
-
 int LoadImage(const char* filename) {
     BMP* folha = BMP_ReadFile(filename);
-    int  largura, altura, profundidade;
+    int largura, altura, profundidade;
+
     if (BMP_GetError() != BMP_OK) {
         cout << "Erro ao abrir a imagem: " << filename << endl;
-        cout << "Codigo do erro: " << BMP_GetError() << endl;
-        cout << "Descricao: " << BMP_GetErrorDescription() << endl;
+        cout << "Código de erro: " << BMP_GetError() << endl;
+        cout << "Descrição: " << BMP_GetErrorDescription() << endl;
         largura = 0;
         altura = 0;
         profundidade = 0;
@@ -27,105 +27,119 @@ int LoadImage(const char* filename) {
     largura = BMP_GetWidth(folha);
     profundidade = BMP_GetDepth(folha);
 
-
-
     BMP* folhaBW = BMP_Create(largura, altura, 24);
+
     if (BMP_GetError() != BMP_OK) {
-        cout << "Erro ao criar a imagem BW!" << endl;
-        cout << "Codigo do erro: " << BMP_GetError() << endl;
-        cout << "Descricao: " << BMP_GetErrorDescription() << endl;
+        cout << "Erro ao criar a imagem BW." << endl;
+        cout << "Código de erro: " << BMP_GetError() << endl;
+        cout << "Descrição: " << BMP_GetErrorDescription() << endl;
         BMP_Free(folha);
+        return 1;
     }
 
     for (int x = 0; x < largura; ++x) {
-            for (int y = 0; y < altura; ++y) {
-                unsigned char r, g, b;
-                unsigned char gray;
+        for (int y = 0; y < altura; ++y) {
+            unsigned char r, g, b;
+            unsigned char gray;
 
-                BMP_GetPixelRGB(folha, x, y, &r, &g, &b);
+            BMP_GetPixelRGB(folha, x, y, &r, &g, &b);
 
-                gray = (unsigned char)((0.299f * r) + (0.587f * g) + (0.114f * b));
-                    if (gray < 160)
-                        gray = 255;
-                    else
-                        gray = 0;
+            gray = (unsigned char)((0.299f * r) + (0.587f * g) + (0.114f * b));
+            // eu atualizei essa parte logo à frente porque, em algumas imagens, o algoritmo estava detectando a sombra como parte da folha
+            // em resumo, a sombra tende a ser cinza (pouca cor), mas a folha tem uma cor (bem) mais viva, então foi só atualizar os parâmetros dentro do if
+            // e fazer a análise do cinza e da variável "cor" abaixo
+            int cor = max(r, max(g, b)) - min(r, min(g, b)); // diferença entre maior e menor canal RGB
 
+            if (gray < 130 || (gray < 170 && cor > 30))
+                gray = 255;
+            else
+                gray = 0;
+            
+            // o problema ainda PODE persistir nas folhas com uma coloração bem escura, mas ainda foi uma melhoria, principalmente no caso do Coleus, que é claro e bem colorido
 
-
-                BMP_SetPixelRGB(folhaBW, x, y, gray, gray, gray);
-            }
+            BMP_SetPixelRGB(folhaBW, x, y, gray, gray, gray);
         }
-    
-        BMP_WriteFile(folhaBW, "BlackWhite/FolhasBW.bmp");
-        if (BMP_GetError() != BMP_OK) {
-            cout << "Erro ao salvar a imagem!" << endl;
-            cout << "Codigo do erro: " << BMP_GetError() << endl;
-            cout << "Descricao: " << BMP_GetErrorDescription() << endl;
-        }
-        BMP_Free(folha);
-        BMP_Free(folhaBW);
+    }
 
-        return 0;
+    BMP_WriteFile(folhaBW, "BlackWhite/FolhasBW.bmp");
+
+    if (BMP_GetError() != BMP_OK) {
+        cout << "Erro ao salvar a imagem." << endl;
+        cout << "Código de erro: " << BMP_GetError() << endl;
+        cout << "Descrição: " << BMP_GetErrorDescription() << endl;
+    }
+
+    BMP_Free(folha);
+    BMP_Free(folhaBW);
+    return 0;
 }
 
 void Dilatacao(const char* filename) {
     BMP* folhaBW = BMP_ReadFile(filename);
-    int  largura, altura, profundidade;
+    int largura, altura, profundidade;
+
     altura = BMP_GetHeight(folhaBW);
     largura = BMP_GetWidth(folhaBW);
     profundidade = BMP_GetDepth(folhaBW);
+
     int kernel[3][3] = {
         {0, 1, 0},
         {1, 1, 1},
         {0, 1, 0}
     };
-    
-    BMP* folhaDilatada = BMP_Create(largura, altura, 24);
-    if (BMP_GetError() != BMP_OK) {
-        cout << "Erro ao criar a imagem dilatada!" << endl;
-        cout << "Codigo do erro: " << BMP_GetError() << endl;
-        cout << "Descricao: " << BMP_GetErrorDescription() << endl;
-        BMP_Free(folhaBW);
 
+    BMP* folhaDilatada = BMP_Create(largura, altura, 24);
+
+    if (BMP_GetError() != BMP_OK) {
+        cout << "Erro ao criar a imagem dilatada." << endl;
+        cout << "Código de erro: " << BMP_GetError() << endl;
+        cout << "Descrição: " << BMP_GetErrorDescription() << endl;
+        BMP_Free(folhaBW);
+        return;
     }
 
     for (int y = 0; y < altura; ++y) {
-            for (int x = 0; x < largura; ++x) {
-                unsigned char r, g, b;
-                BMP_GetPixelRGB(folhaBW, x, y, &r, &g, &b);
-                if (r == 255) { // Pixel branco
-                    for (int ky = -1; ky <= 1; ++ky) {
-                        for (int kx = -1; kx <= 1; ++kx) {
-                            if (kernel[ky + 1][kx + 1] == 1) {
-                                int newX = x + kx;
-                                int newY = y + ky;
-                                if (newX >= 0 && newX < largura && newY >= 0 && newY < altura) {
-                                    BMP_SetPixelRGB(folhaDilatada, newX, newY, 255, 255, 255);
-                                }
+        for (int x = 0; x < largura; ++x) {
+            unsigned char r, g, b;
+            BMP_GetPixelRGB(folhaBW, x, y, &r, &g, &b);
+
+            if (r == 255) { // se piixel branco
+                for (int ky = -1; ky <= 1; ++ky) {
+                    for (int kx = -1; kx <= 1; ++kx) {
+                        if (kernel[ky + 1][kx + 1] == 1) {
+                            int newX = x + kx;
+                            int newY = y + ky;
+
+                            if (newX >= 0 && newX < largura && newY >= 0 && newY < altura) {
+                                BMP_SetPixelRGB(folhaDilatada, newX, newY, 255, 255, 255);
                             }
                         }
                     }
                 }
             }
         }
+    }
 
     BMP_WriteFile(folhaDilatada, "Dilatacao/FolhasDilatadas.bmp");
+
     if (BMP_GetError() != BMP_OK) {
-        cout << "Erro ao salvar a imagem dilatada!" << endl;
-        cout << "Codigo do erro: " << BMP_GetError() << endl;
-        cout << "Descricao: " << BMP_GetErrorDescription() << endl;
+        cout << "Erro ao salvar a imagem dilatada." << endl;
+        cout << "Código de erro: " << BMP_GetError() << endl;
+        cout << "Descrição: " << BMP_GetErrorDescription() << endl;
     }
+
     BMP_Free(folhaDilatada);
     BMP_Free(folhaBW);
-
 }
 
 void Erosao(const char* filename) {
     BMP* folhaBW = BMP_ReadFile(filename);
-    int  largura, altura, profundidade;
+    int largura, altura, profundidade;
+
     altura = BMP_GetHeight(folhaBW);
     largura = BMP_GetWidth(folhaBW);
     profundidade = BMP_GetDepth(folhaBW);
+
     int kernel[3][3] = {
         {0, 1, 0},
         {1, 1, 1},
@@ -133,52 +147,64 @@ void Erosao(const char* filename) {
     };
 
     BMP* folhasErosao = BMP_Create(largura, altura, 24);
+
     if (BMP_GetError() != BMP_OK) {
-        cout << "Erro ao criar a imagem erodida!" << endl;
-        cout << "Codigo do erro: " << BMP_GetError() << endl;
-        cout << "Descricao: " << BMP_GetErrorDescription() << endl;
+        cout << "Erro ao criar a imagem erodida." << endl; // erodida?
+        cout << "Código de erro: " << BMP_GetError() << endl;
+        cout << "Descrição: " << BMP_GetErrorDescription() << endl;
         BMP_Free(folhaBW);
+        return;
     }
 
     for (int y = 0; y < altura; ++y) {
-            for (int x = 0; x < largura; ++x) {
-                unsigned char r, g, b;
-                BMP_GetPixelRGB(folhaBW, x, y, &r, &g, &b);
-                if (r == 255) { // Pixel branco
-                    bool erodir = false;
-                    for (int ky = -1; ky <= 1; ++ky) {
-                        for (int kx = -1; kx <= 1; ++kx) {
-                            if (kernel[ky + 1][kx + 1] == 1) {
-                                int newX = x + kx;
-                                int newY = y + ky;
-                                if (newX >= 0 && newX < largura && newY >= 0 && newY < altura) {
-                                    unsigned char nr, ng, nb;
-                                    BMP_GetPixelRGB(folhaBW, newX, newY, &nr, &ng, &nb);
-                                    if (nr == 0) { // Pixel preto
-                                        erodir = true;
-                                        break;
-                                    }
+        for (int x = 0; x < largura; ++x) {
+            unsigned char r, g, b;
+            BMP_GetPixelRGB(folhaBW, x, y, &r, &g, &b);
+
+            if (r == 255) { // se pixel branco
+                bool erodir = false;
+
+                for (int ky = -1; ky <= 1; ++ky) {
+                    for (int kx = -1; kx <= 1; ++kx) {
+                        if (kernel[ky + 1][kx + 1] == 1) {
+                            int newX = x + kx;
+                            int newY = y + ky;
+
+                            if (newX >= 0 && newX < largura && newY >= 0 && newY < altura) {
+                                unsigned char nr, ng, nb;
+                                BMP_GetPixelRGB(folhaBW, newX, newY, &nr, &ng, &nb);
+
+                                if (nr == 0) { // se pixel preto
+                                    erodir = true;
+                                    break;
                                 }
+                            } else {
+                                // fora da imagem conta como fundo
+                                erodir = true;
+                                break;
                             }
                         }
-                        if (erodir) break;
                     }
-                    if (!erodir) {
-                        BMP_SetPixelRGB(folhasErosao, x, y, 255, 255, 255);
-                    }
+                    if (erodir) break;
+                }
+
+                if (!erodir) {
+                    BMP_SetPixelRGB(folhasErosao, x, y, 255, 255, 255);
                 }
             }
         }
+    }
 
     BMP_WriteFile(folhasErosao, "Erosao/FolhasErosao.bmp");
+
     if (BMP_GetError() != BMP_OK) {
-        cout << "Erro ao salvar a imagem erodida!" << endl;
-        cout << "Codigo do erro: " << BMP_GetError() << endl;
-        cout << "Descricao: " << BMP_GetErrorDescription() << endl;
+        cout << "Erro ao salvar a imagem erodida." << endl;
+        cout << "ódigo de erro: " << BMP_GetError() << endl;
+        cout << "Descrição: " << BMP_GetErrorDescription() << endl;
     }
+
     BMP_Free(folhasErosao);
     BMP_Free(folhaBW);
-
 }
 
 void Bordas(const char* Imagem1, const char* Imagem2){
@@ -189,12 +215,14 @@ void Bordas(const char* Imagem1, const char* Imagem2){
     int altura = BMP_GetHeight(folha1);
 
     BMP* folhaBordas = BMP_Create(largura, altura, 24);
+
     if (BMP_GetError() != BMP_OK) {
-        cout << "Erro ao criar a imagem de bordas!" << endl;
-        cout << "Codigo do erro: " << BMP_GetError() << endl;
-        cout << "Descricao: " << BMP_GetErrorDescription() << endl;
+        cout << "Erro ao criar a imagem de bordas." << endl;
+        cout << "Código de erro: " << BMP_GetError() << endl;
+        cout << "Descrição: " << BMP_GetErrorDescription() << endl;
         BMP_Free(folha1);
         BMP_Free(folha2);
+        return;
     }
 
     for (int y = 0; y < altura; ++y) {
@@ -205,170 +233,111 @@ void Bordas(const char* Imagem1, const char* Imagem2){
             BMP_GetPixelRGB(folha1, x, y, &r1, &g1, &b1);
             BMP_GetPixelRGB(folha2, x, y, &r2, &g2, &b2);
 
-            if (r1 == 255 && r2 == 0) { // Pixel branco na primeira imagem e preto na segunda
-                BMP_SetPixelRGB(folhaBordas, x, y, 255, 0, 0); // Definir pixel como vermelho
+            if (r1 == 255 && r2 == 0) { // pixel branco na primeira imagem e preto na segunda
+                BMP_SetPixelRGB(folhaBordas, x, y, 255, 0, 0); // definir pixel como vermelho
             } else {
-                BMP_SetPixelRGB(folhaBordas, x, y, 0, 0, 0); // Definir pixel como preto
+                BMP_SetPixelRGB(folhaBordas, x, y, 0, 0, 0); // definir pixel como preto
             }
-            
         }
     }
 
     BMP_WriteFile(folhaBordas, "Bordas/FolhasBordas.bmp");
+
     if (BMP_GetError() != BMP_OK) {
-        cout << "Erro ao salvar a imagem de bordas!" << endl;
-        cout << "Codigo do erro: " << BMP_GetError() << endl;
-        cout << "Descricao: " << BMP_GetErrorDescription() << endl;
+        cout << "Erro ao salvar a imagem de bordas." << endl;
+        cout << "Código de erro: " << BMP_GetError() << endl;
+        cout << "Descrição: " << BMP_GetErrorDescription() << endl;
     }
-    
+
     BMP_Free(folha1);
     BMP_Free(folha2);
     BMP_Free(folhaBordas);
-
 }
 
-vector<int> BordasPorFolha(vector<int>& rotulos, vector<int>& areas, int largura, int altura, vector<int>& bordas) {
+void BordasPorFolha(vector<int>& rotulos, vector<int>& areas, int largura, int altura, vector<int>& bordas) {
+    // pega a borda feita pela erosão e separa por folha
+    BMP* folhaBordas = BMP_ReadFile("Bordas/FolhasBordas.bmp");
 
-    vector<int> quantidadeBordas(areas.size(), 0);
-
-    // Vizinhos em cruz: cima, baixo, esquerda e direita.
-    int dx[4] = {0, 0, -1, 1};
-    int dy[4] = {-1, 1, 0, 0};
+    bordas.assign(largura * altura, 0);
 
     for(int y = 0; y < altura; ++y) {
         for(int x = 0; x < largura; ++x) {
+            unsigned char r, g, b;
+            BMP_GetPixelRGB(folhaBordas, x, y, &r, &g, &b);
 
             int rotulo = rotulos[y * largura + x];
 
-            if(rotulo > 0 && rotulo < (int)areas.size() && areas[rotulo] > 1000) {
-                bool borda = false;
-
-                for(int i = 0; i < 4; ++i) {
-                    int nx = x + dx[i];
-                    int ny = y + dy[i];
-
-                    if(nx < 0 || nx >= largura || ny < 0 || ny >= altura) {
-                        borda = true;
-                    } else if(rotulos[ny * largura + nx] != rotulo) {
-                        borda = true;
-                    }
-                }
-
-                if(borda) {
-                    bordas[y * largura + x] = rotulo;
-                    quantidadeBordas[rotulo]++;
-                }
+            // pixel vermelho de uma folha válida
+            if(r == 255 && g == 0 && rotulo > 0 && areas[rotulo] > 1000) {
+                bordas[y * largura + x] = rotulo;
             }
         }
     }
 
-    for(int i = 1; i < (int)areas.size(); ++i) {
-        if(areas[i] > 1000) {
-            cout << "Folha " << i << ": " << quantidadeBordas[i]
-                 << " pixels de borda" << endl;
+    BMP_Free(folhaBordas);
+}
+
+void DesenhaOriginal(BMP* folha, vector<int>& fronteira, int rotulo, int largura, int altura, int numero) {
+    // pinta de vermelho a fronteira da folha na imagem original
+    for(int y = 0; y < altura; ++y) {
+        for(int x = 0; x < largura; ++x) {
+            if(fronteira[y * largura + x] == rotulo) {
+                BMP_SetPixelRGB(folha, x, y, 255, 0, 0);
+            }
         }
     }
 
-    return bordas;
+    string nome = "output/Folha" + to_string(numero) + ".bmp";
+    BMP_WriteFile(folha, nome.c_str());
 
-}
-
-void DesenhaOriginal(const char* Imagem1, const char* Imagem2) {
-    BMP* folha1 = BMP_ReadFile(Imagem1);
-    BMP* folha2 = BMP_ReadFile(Imagem2);
-
-    int largura = BMP_GetWidth(folha1);
-    int altura = BMP_GetHeight(folha1);
-
-    BMP* folhaDesenhada = BMP_Create(largura, altura, 24);
     if (BMP_GetError() != BMP_OK) {
-        cout << "Erro ao criar a imagem desenhada!" << endl;
-        cout << "Codigo do erro: " << BMP_GetError() << endl;
-        cout << "Descricao: " << BMP_GetErrorDescription() << endl;
-        BMP_Free(folha1);
-        BMP_Free(folha2);
+        cout << "Erro ao salvar a imagem desenhada." << endl;
+        cout << "Código de erro: " << BMP_GetError() << endl;
+        cout << "Descrição: " << BMP_GetErrorDescription() << endl;
     }
-
-
-}
-
-int SegueFronteira(vector<int>& bordas, vector<int>& rotulos, int largura, int altura) {
-
-    bool achou = false;
-    for(int i = 0; i < altura; i++){
-        for(int j = 0; j < largura; j++){
-         //percorrer a imagem e verificar se o pixel é uma borda
-            if(bordas[j * largura + i] == rotulos[j * largura + i] && rotulos[j * largura + i] != 0){
-                //se for uma borda, verificar os 8 vizinhos
-                bordas[j * largura + i] = rotulos[j * largura + i];
-                achou = true;
-                
-            }
-        }
-    }
-    if(!achou){
-        cout << "Nao foi possivel encontrar a fronteira!" << endl;
-        return 0;
-    }
-
-    //8 vizinhos
-    int dx[8] = {-1, -1, -1, 0, 0, 1, 1, 1};
-    int dy[8] = {-1, 0, 1, -1, 1, -1, 0, 1};
-
-    for(int i = 0; i < altura; i++){
-        for(int j = 0; j < largura; j++){
-            if(bordas[j * largura + i] == rotulos[j * largura + i] && rotulos[j * largura + i] != 0){
-                //verificar os 8 vizinhos
-                
-            }
-        }
-    }
-
-    return 1;
-
 }
 
 int rotula_folhas(vector<int>& rotulos, vector<int>& areas, int& largura, int& altura){
-    //Avaliar a imagem binaria em preto e branco
+    //avaliar a imagem binária em preto e branco
     //cada pixel branco da primeira folha vira 1, da segunda vira 2
     //pixels pretos permanecem 0
+    BMP* folhaBW = BMP_ReadFile("BlackWhite/FolhasBW.bmp"); // abre a imagem
 
-    BMP* folhaBW = BMP_ReadFile("BlackWhite/FolhasBW.bmp");   // abre a imagem
-    largura = BMP_GetWidth(folhaBW);                       // quantas colunas
-    altura  = BMP_GetHeight(folhaBW);                      // quantas linhas
-    int folhas = 0;                                                  // contador de folhas
+    largura = BMP_GetWidth(folhaBW); // quantas colunas
+    altura = BMP_GetHeight(folhaBW); // quantas linhas
 
+    int folhas = 0; // contador de folhas
     unsigned char r, g, b;
     rotulos.assign(largura * altura, 0);
     int contador = 0;
     stack<pair<int, int>> pilha;
 
-
     for(int y = 0; y < altura; ++y) {
         for(int x = 0; x < largura; ++x) {
-
-
-
             BMP_GetPixelRGB(folhaBW, x, y, &r, &g, &b);
+
             if(r == 255 && g == 255 && b == 255 && rotulos[y * largura + x] == 0) { // pixel branco
                 contador++;
                 rotulos[y * largura + x] = contador;
                 pilha.push({x, y});
-                //enquanto a pilha nao estiver vazia, pega o pixel do topo da pilha e verifica os vizinhos
+
+                // enquanto a pilha não estiver vazia, pega o pixel do topo da pilha e verifica os vizinhos
                 while(!pilha.empty()) {
                     pair<int, int> pixel = pilha.top();
                     pilha.pop();
-                    //PERCORRER OS 8 VIZINHO
 
-                    for(int dy = -1; dy <= 1; ++dy) {       
+                    // PERCORRER OS 8 VIZINHO
+                    for(int dy = -1; dy <= 1; ++dy) {
                         for(int dx = -1; dx <= 1; ++dx) {
                             if(dx == 0 && dy == 0) continue; // ignora o pixel atual
+
                             int nx = pixel.first + dx;
                             int ny = pixel.second + dy;
-                            //VE SE O VIZINHO FAZ PARTE DA IMAGE
 
+                            //VE SE O VIZINHO FAZ PARTE DA IMAGE
                             if(nx >= 0 && nx < largura && ny >= 0 && ny < altura) {
                                 BMP_GetPixelRGB(folhaBW, nx, ny, &r, &g, &b);
+
                                 if(r == 255 && g == 255 && b == 255 && rotulos[ny * largura + nx] == 0) {
                                     rotulos[ny * largura + nx] = contador;
                                     pilha.push({nx, ny});
@@ -381,19 +350,18 @@ int rotula_folhas(vector<int>& rotulos, vector<int>& areas, int& largura, int& a
         }
     }
 
-    //medir cada rotulo 
+    BMP_Free(folhaBW);
+
+    //medir cada rótulo
     areas.assign(contador + 1, 0);
     for(int i = 0; i < rotulos.size(); ++i) {
         if(rotulos[i] > 0)
             areas[rotulos[i]]++;
     }
 
-
-    //PEGAR O NUMERO DE FOLHAS E IMPRIMIR 
-
+    //PEGAR O NUMERO DE FOLHAS E IMPRIMIR
     for(int i = 0; i < areas.size(); ++i) {
         int npixels = 0;
-        
         if(areas[i] > 0)
             npixels = areas[i];
 
@@ -404,38 +372,132 @@ int rotula_folhas(vector<int>& rotulos, vector<int>& areas, int& largura, int& a
     return folhas;
 }
 
-void seguidor_fronteira(vector<int>& bordas, vector<int>& rotulos, int largura, int altura) {
-    // Implementação do algoritmo de seguimento de fronteira
-    // Este é um esboço e precisa ser completado com a lógica correta
-    for(int y = 0; y < altura; ++y) {
+int seguidor_fronteira(vector<int>& bordas, vector<int>& fronteira, int rotulo, int largura, int altura) {
+    // implementação algoritmo de seguimento de fronteira (Moore, Gonzales págs 814-816. testar se ele não tá processando o ponto inicial (?) 2x)
+    // 8 vizinhos em sentido horário, começando pelo da esquerda (também descrito como ao oeste)
+    int dx[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
+    int dy[8] = {0, -1, -1, -1, 0, 1, 1, 1};
+
+    // acha o primeiro pixel da borda da folha
+    int x0 = -1, y0 = -1;
+
+    for(int y = 0; y < altura && x0 == -1; ++y) {
         for(int x = 0; x < largura; ++x) {
-            int rotulo = rotulos[y * largura + x];
-            if(rotulo > 0 && bordas[y * largura + x] == 0) {
-                // Encontrar o ponto inicial da fronteira
-                // Seguir a fronteira usando os vizinhos
-                // Marcar os pixels da fronteira na imagem de bordas
+            if(bordas[y * largura + x] == rotulo) {
+                x0 = x;
+                y0 = y;
+                break;
             }
         }
     }
+
+    if(x0 == -1){
+        return 0;
+    } 
+
+    int x = x0, y = y0;
+    int cx = x0 - 1, cy = y0; // pixel de fundo de onde chegou
+    int x1 = -1, y1 = -1; // segundo pixel da fronteira
+    int contador = 1;
+
+    fronteira[y0 * largura + x0] = rotulo;
+
+    while(true) {
+        // vendo em qual direção está o pixel de fundo
+        int dir = 0;
+        for(int i = 0; i < 8; ++i) {
+            if(x + dx[i] == cx && y + dy[i] == cy) dir = i;
+        }
+
+        // gira em volta do pixel atual até achar o próximo da borda
+        bool achou = false;
+        int nx = 0, ny = 0, k = 0;
+
+        for(int i = 1; i <= 8; ++i) {
+            k = (dir + i) % 8;
+            nx = x + dx[k];
+            ny = y + dy[k];
+
+            if(nx >= 0 && nx < largura && ny >= 0 && ny < altura && bordas[ny * largura + nx] == rotulo) {
+                achou = true;
+                break;
+            }
+        }
+
+        if(!achou) break;
+
+        // o pixel de fundo novo e o vizinho visto antes do que foi achado
+        int anterior = (k + 7) % 8;
+        cx = x + dx[anterior];
+        cy = y + dy[anterior];
+
+        // para quando voltar no início e o próximo for o segundo pixel
+        if(x1 == -1) {
+            x1 = nx;
+            y1 = ny;
+        } else if(x == x0 && y == y0 && nx == x1 && ny == y1) {
+            break;
+        }
+
+        x = nx;
+        y = ny;
+
+        if(fronteira[y * largura + x] == 0) {
+            fronteira[y * largura + x] = rotulo;
+            contador++;
+        }
+    }
+
+    return contador;
 }
 
 int main() {
-    LoadImage("Folhas/Folhas6.bmp");
+    // troca o caminho aqui para analisar outra imagem
+    // talvez precise fazer algo dinâmico ao invés de hardcoded (?)
+    const char* imagem = "Folhas/Folhas10.bmp";
+
+    if(LoadImage(imagem) != 0){
+        return 1;
+    }
 
     vector<int> rotulos;
     vector<int> areas;
     vector<int> bordas;
     int largura = 0, altura = 0;
+
     int folhas = rotula_folhas(rotulos, areas, largura, altura);
-    cout << "Numero de folhas: " << folhas << endl;
-    BordasPorFolha(rotulos, areas, largura, altura, bordas);
+    cout << "Número de folhas: " << folhas << endl;
+
     Dilatacao("BlackWhite/FolhasBW.bmp");
     Erosao("BlackWhite/FolhasBW.bmp");
     Bordas("BlackWhite/FolhasBW.bmp", "Erosao/FolhasErosao.bmp");
+    BordasPorFolha(rotulos, areas, largura, altura, bordas);
 
-    //Bordas("../Dilatacao/FolhasDilatadas.bmp", "../Erosao/FolhasErosao.bmp");
+    vector<int> fronteira(largura * altura, 0);
+    BMP* resultado = BMP_ReadFile(imagem);
+    int numero = 0;
 
-    cout << "Processamento concluído!" << endl;
+    /* 
+    essa parte tem dois problemas:
+    1. quando uma imagem X tem folhas a mais que uma outra, os arquivos antigos não são apagados/atualizados, mas é perceptível que faz parte do arquivo antigo
+    2. por algum motivo, às vezes acontece um bug do primeiro arquivo estar com a borda do arquivo antigo nele, mas o restante dos arquivos está normal.
+    */
+    for(int rotulo = 1; rotulo < (int)areas.size(); ++rotulo) {
+        if(areas[rotulo] > 1000) {
+            numero++;
 
+            int pixels = seguidor_fronteira(bordas, fronteira, rotulo, largura, altura);
+            DesenhaOriginal(resultado, fronteira, rotulo, largura, altura, numero);
+
+            cout << "Folha " << numero << ": " << pixels << " pixels de borda" << endl;
+            cout << "Imagem salva em output/Folha" << numero << ".bmp" << endl;
+            cout << "Aperte Enter para ir para a próxima folha." << endl;
+            cin.get();
+        }
+    }
+
+    BMP_Free(resultado);
+
+    cout << "Processamento da imagem concluído!" << endl;
     return 0;
 }
