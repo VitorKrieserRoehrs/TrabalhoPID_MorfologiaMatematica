@@ -6,6 +6,8 @@
 #include <stack>
 #include "Include/qdbmp.h"
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 
 using namespace std;
 
@@ -451,53 +453,90 @@ int seguidor_fronteira(vector<int>& bordas, vector<int>& fronteira, int rotulo, 
     return contador;
 }
 
-int main() {
-    // troca o caminho aqui para analisar outra imagem
-    // talvez precise fazer algo dinâmico ao invés de hardcoded (?)
-    const char* imagem = "Folhas/Folhas10.bmp";
 
-    if(LoadImage(imagem) != 0){
-        return 1;
-    }
+int main(int argc, char* argv[]) {
+    bool modoLote = (argc > 1);
 
-    vector<int> rotulos;
-    vector<int> areas;
-    vector<int> bordas;
-    int largura = 0, altura = 0;
-
-    int folhas = rotula_folhas(rotulos, areas, largura, altura);
-    cout << "Número de folhas: " << folhas << endl;
-
-    Dilatacao("BlackWhite/FolhasBW.bmp");
-    Erosao("BlackWhite/FolhasBW.bmp");
-    Bordas("BlackWhite/FolhasBW.bmp", "Erosao/FolhasErosao.bmp");
-    BordasPorFolha(rotulos, areas, largura, altura, bordas);
-
-    vector<int> fronteira(largura * altura, 0);
-    BMP* resultado = BMP_ReadFile(imagem);
-    int numero = 0;
-
-    /* 
-    essa parte tem dois problemas:
-    1. quando uma imagem X tem folhas a mais que uma outra, os arquivos antigos não são apagados/atualizados, mas é perceptível que faz parte do arquivo antigo
-    2. por algum motivo, às vezes acontece um bug do primeiro arquivo estar com a borda do arquivo antigo nele, mas o restante dos arquivos está normal.
-    */
-    for(int rotulo = 1; rotulo < (int)areas.size(); ++rotulo) {
-        if(areas[rotulo] > 1000) {
-            numero++;
-
-            int pixels = seguidor_fronteira(bordas, fronteira, rotulo, largura, altura);
-            DesenhaOriginal(resultado, fronteira, rotulo, largura, altura, numero);
-
-            cout << "Folha " << numero << ": " << pixels << " pixels de borda" << endl;
-            cout << "Imagem salva em output/Folha" << numero << ".bmp" << endl;
-            cout << "Aperte Enter para ir para a próxima folha." << endl;
-            cin.get();
+    vector<string> arquivos;
+    if (modoLote) {
+        for (const auto& entrada : filesystem::directory_iterator("Folhas")) {
+            if (entrada.path().extension() == ".bmp")
+                arquivos.push_back(entrada.path().filename().string());
         }
+        sort(arquivos.begin(), arquivos.end()); // ordem estável para o relatório
+    } else {
+        string nomeArquivo;
+        cout << "Digite o nome da imagem (ex: Folhas10.bmp): ";
+        getline(cin, nomeArquivo);
+        size_t inicio = nomeArquivo.find_first_not_of(" \t\r\n");
+        size_t fim = nomeArquivo.find_last_not_of(" \t\r\n");
+        if (inicio == string::npos) {
+            cout << "Nenhum nome foi informado. Encerrando o programa." << endl;
+            return 1;
+        }
+        arquivos.push_back(nomeArquivo.substr(inicio, fim - inicio + 1));
     }
 
-    BMP_Free(resultado);
+    ofstream csv("output/relatorio.csv");
+    csv << "imagem,folha,pixels_fronteira\n";
 
-    cout << "Processamento da imagem concluído!" << endl;
+    for (const string& nomeArquivo : arquivos) {
+        string caminho = "Folhas/" + nomeArquivo;
+        cout << "\n=== " << caminho << " ===" << endl;
+
+        if (LoadImage(caminho.c_str()) != 0) {
+            cout << "Imagem nao encontrada ou invalida: " << caminho << endl;
+            continue;
+        }
+
+        string nomeBase = nomeArquivo;
+        size_t ponto = nomeBase.find_last_of('.');
+        if (ponto != string::npos) nomeBase = nomeBase.substr(0, ponto);
+
+        vector<int> rotulos;
+        vector<int> areas;
+        vector<int> bordas;
+        int largura = 0, altura = 0;
+
+        int folhas = rotula_folhas(rotulos, areas, largura, altura);
+        cout << "Numero de folhas: " << folhas << endl;
+
+        Dilatacao("BlackWhite/FolhasBW.bmp");
+        Erosao("BlackWhite/FolhasBW.bmp");
+        Bordas("BlackWhite/FolhasBW.bmp", "Erosao/FolhasErosao.bmp");
+        BordasPorFolha(rotulos, areas, largura, altura, bordas);
+
+        vector<int> fronteira(largura * altura, 0);
+        BMP* resultado = BMP_ReadFile(caminho.c_str());
+        int numero = 0;
+
+        for(int rotulo = 1; rotulo < (int)areas.size(); ++rotulo) {
+            if(areas[rotulo] > 1000) {
+                numero++;
+
+                int pixels = seguidor_fronteira(bordas, fronteira, rotulo, largura, altura);
+                DesenhaOriginal(resultado, fronteira, rotulo, largura, altura, numero);
+
+                string antigo = "output/Folha" + to_string(numero) + ".bmp";
+                string novo   = "output/" + nomeBase + "_folha" + to_string(numero) + ".bmp";
+                if (rename(antigo.c_str(), novo.c_str()) != 0)
+                    cout << "Aviso: nao foi possivel renomear " << antigo << " para " << novo << endl;
+
+                csv << nomeBase << "," << numero << "," << pixels << "\n";
+
+                cout << "Folha " << numero << ": " << pixels << " pixels de borda" << endl;
+                cout << "Imagem salva em " << novo << endl;
+
+                if (!modoLote) {
+                    cout << "Aperte Enter para ir para a proxima folha." << endl;
+                    cin.get();
+                }
+            }
+        }
+
+        BMP_Free(resultado);
+    }
+
+    cout << "\nProcessamento concluido!" << endl;
     return 0;
 }
