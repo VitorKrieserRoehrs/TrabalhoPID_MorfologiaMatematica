@@ -460,8 +460,9 @@ int main(int argc, char* argv[]) {
     vector<string> arquivos;
     if (modoLote) {
         for (const auto& entrada : filesystem::directory_iterator("Folhas")) {
-            if (entrada.path().extension() == ".bmp")
-                arquivos.push_back(entrada.path().filename().string());
+            string nome = entrada.path().filename().string();
+            if (entrada.path().extension() == ".bmp" && nome.rfind("IMG_", 0) == 0)
+                arquivos.push_back(nome);
         }
         sort(arquivos.begin(), arquivos.end()); // ordem estável para o relatório
     } else {
@@ -477,8 +478,15 @@ int main(int argc, char* argv[]) {
         arquivos.push_back(nomeArquivo.substr(inicio, fim - inicio + 1));
     }
 
-    ofstream csv("output/relatorio.csv");
-    csv << "imagem,folha,pixels_fronteira\n";
+    ofstream csv;
+    if (modoLote) {
+        csv.open("output/relatorio.csv");
+        if (!csv) {
+            cout << "Erro ao abrir output/relatorio.csv. Verifique se a pasta output/ existe." << endl;
+            return 1;
+        }
+        csv << "imagem,folha,area,pixels_fronteira\n";
+    }
 
     for (const string& nomeArquivo : arquivos) {
         string caminho = "Folhas/" + nomeArquivo;
@@ -522,7 +530,7 @@ int main(int argc, char* argv[]) {
                 if (rename(antigo.c_str(), novo.c_str()) != 0)
                     cout << "Aviso: nao foi possivel renomear " << antigo << " para " << novo << endl;
 
-                csv << nomeBase << "," << numero << "," << pixels << "\n";
+                csv << nomeBase << "," << numero << "," << areas[rotulo] << "," << pixels << "\n";
 
                 cout << "Folha " << numero << ": " << pixels << " pixels de borda" << endl;
                 cout << "Imagem salva em " << novo << endl;
